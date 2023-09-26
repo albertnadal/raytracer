@@ -1,5 +1,27 @@
 const CANVAS_SIZE = 480
 
+class Color {
+    constructor(r, g, b) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+    }
+
+    static hadamard_product(a, b) {
+        // Multiplying colors
+        return new Color(a.r * b.r, a.g * b.g, a.b * b.b);
+    }
+
+    static mul(v, scalar) {
+        return new Color(scalar * v.r, scalar * v.g, scalar * v.b)
+    }
+
+    static add(a, b) {
+        // Addition
+        return new Color(a.r + b.r, a.g + b.g, a.b + b.b)
+    }
+}
+
 class Point {
     constructor(x, y, z) {
         this.x = x;
@@ -9,12 +31,7 @@ class Point {
 
     static sub(a, b) {
         // Substraction
-        return new Point(a.x + b.x, a.y - b.y, a.z - b.z)
-    }
-
-    static substractVector(a, b) {
-        // Substraction of a vector 'b' from a point 'a'
-        return new Point(a.x + b.x, a.y - b.y, a.z - b.z)
+        return new Point(a.x - b.x, a.y - b.y, a.z - b.z)
     }
 }
 
@@ -32,11 +49,28 @@ class Vector {
 
     static sub(a, b) {
         // Substraction
-        return new Vector(a.x + b.x, a.y - b.y, a.z - b.z)
+        return new Vector(a.x - b.x, a.y - b.y, a.z - b.z)
+    }
+
+    static add(a, b) {
+        // Addition
+        return new Vector(a.x + b.x, a.y + b.y, a.z + b.z)
     }
 
     static magnitude(v) {
         return Math.sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z))
+    }
+
+    static mul(v, scalar) {
+        return new Vector(scalar * v.x, scalar * v.y, scalar * v.z)
+    }
+
+    static reflect(v, normal) {
+        return this.sub(v, Vector.mul(normal, 2 * Vector.dot(v, normal)))
+    }
+
+    static negation(v) {
+        return Vector.mul(v, -1)
     }
 
     normalize() {
@@ -51,6 +85,10 @@ class Ray {
     constructor(origin, direction) {
         this.origin = origin;
         this.direction = direction;
+    }
+
+    position(t) {
+        return Vector.add(this.origin, Vector.mul(this.direction, t));
     }
 }
 
@@ -94,10 +132,25 @@ class Intersections {
     }
 }
 
+class Material {
+    constructor(color, ambient, diffuse, specular, shininess) {
+        this.color = color;
+        this.ambient = ambient;
+        this.diffuse = diffuse;
+        this.specular = specular;
+        this.shininess = shininess;
+    }
+
+    static get_default() {
+        return new Material(new Color(1, 1, 1), 0.1, 0.9, 0.9, 200.0)
+    }
+}
+
 class Sphere {
-    constructor(origin, radius) {
+    constructor(origin, radius, material = undefined) {
         this.origin = origin;
         this.radius = radius;
+        this.material = material;
     }
 
     intersect(ray) {
@@ -116,6 +169,49 @@ class Sphere {
         }
         return new Intersections(intersections)
     }
+
+    normal_at(p) {
+        // Calculation without taking in consideration sphere transformations
+        let sub = Vector.sub(p, this.origin);
+        sub.normalize();
+        return sub;
+    }
+}
+
+class Light {
+    constructor(position, intensity) {
+        this.position = position;
+        this.intensity = intensity;
+    }
+
+    static lighting(material, light, point, eyev, normalv) {
+        let effective_color = Color.hadamard_product(material.color, light.intensity);
+        let lightv = Vector.sub(light.position, point);
+        lightv.normalize();
+        let ambient = Color.mul(effective_color, material.ambient);
+
+        let diffuse, specular;
+        let light_dot_normal = Vector.dot(lightv, normalv);
+
+        if (light_dot_normal < 0) {
+            diffuse = new Color(0, 0, 0); // black
+            specular = new Color(0, 0, 0); // black
+        } else {
+            diffuse = Color.mul(effective_color, material.diffuse * light_dot_normal);
+
+            let reflectv = Vector.reflect(Vector.negation(lightv), normalv)
+            let reflect_dot_eye = Vector.dot(reflectv, eyev)
+
+            if (reflect_dot_eye <= 0) {
+                specular = new Color(0, 0, 0); // black
+            } else {
+                let factor = Math.pow(reflect_dot_eye, material.shininess)
+                specular = Color.mul(light.intensity, material.specular * factor)
+            }
+        }
+
+        return Color.add(ambient, Color.add(diffuse, specular))
+    }
 }
 
 function setup() {
@@ -130,11 +226,17 @@ function draw() {
     let wall_z = 10;
     let wall_size = 10;
     let wall_half = wall_size / 2;
-    let pixel_size = wall_size / CANVAS_SIZE
+    let pixel_size = wall_size / CANVAS_SIZE;
 
-    let sphere_origin = new Point(0, 0, 0)
-    let radius = 1
-    let sphere = new Sphere(sphere_origin, radius)
+    let sphere_origin = new Point(0, 0, 0);
+    let radius = 1;
+    let material = Material.get_default();
+    material.color = new Color(1, 0.2, 1);
+    let sphere = new Sphere(sphere_origin, radius, material);
+
+    let light_position = new Point(-10, 10, -10);
+    let light_color = new Color(1, 1, 1);
+    let light = new Light(light_position, light_color);
 
     for (let y = 0; y < CANVAS_SIZE; y++) {
         world_y = wall_half - pixel_size * y;
@@ -147,8 +249,13 @@ function draw() {
             let ray = new Ray(ray_origin, ray_direction);
             let intersections = sphere.intersect(ray);
 
-            if (intersections.hit() !== null) {
-                set(x, y, color('red'));
+            let intersection = intersections.hit()
+            if (intersection !== null) {
+                let intersection_point = ray.position(intersection.t);
+                let intersection_normal = intersection.object.normal_at(intersection_point);
+                let eye_vector = Vector.negation(ray_direction);
+                let computed_color = Light.lighting(intersection.object.material, light, intersection_point, eye_vector, intersection_normal);
+                set(x, y, color(computed_color.r * 255, computed_color.g * 255, computed_color.b * 255));
             }
         }
     }
