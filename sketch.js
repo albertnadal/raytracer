@@ -31,7 +31,7 @@ class Point {
 
     static sub(a, b) {
         // Substraction
-        return new Point(a.x - b.x, a.y - b.y, a.z - b.z)
+        return new Vector(a.x - b.x, a.y - b.y, a.z - b.z)
     }
 }
 
@@ -231,7 +231,7 @@ function draw() {
     let sphere_origin = new Point(0, 0, 0);
     let radius = 1;
     let material = Material.get_default();
-    material.color = new Color(1, 0.2, 1);
+    material.color = new Color(1, 0.2, 1); //#ff33ff
     let sphere = new Sphere(sphere_origin, radius, material);
 
     let light_position = new Point(-10, 10, -10);
