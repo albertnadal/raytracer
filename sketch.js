@@ -159,7 +159,7 @@ class Sphere {
         let sphere_to_ray = Point.sub(ray.origin, this.origin)
         let a = Vector.dot(ray.direction, ray.direction)
         let b = 2 * Vector.dot(ray.direction, sphere_to_ray)
-        let c = Vector.dot(sphere_to_ray, sphere_to_ray) - 1
+        let c = Vector.dot(sphere_to_ray, sphere_to_ray) - (this.radius * this.radius)
         let discriminant = (b * b) - (4 * a * c)
         if (discriminant >= 0) {
             let t1 = (-b - Math.sqrt(discriminant)) / (2 * a)
